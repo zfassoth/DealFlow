@@ -52,6 +52,25 @@
 
 @media(max-width:900px){.shell{grid-template-columns:1fr}.main{padding:20px 16px 40px}.stats{grid-template-columns:repeat(2,1fr)}.card{grid-template-columns:1fr}.kanban{grid-template-columns:repeat(5,260px)}}@media(max-width:560px){.topbar{align-items:flex-start}.topbar h1{font-size:26px}.hero{display:block}.formgrid{grid-template-columns:1fr}.full{grid-column:auto}.toolbar{display:grid}.select{width:100%}.detail{grid-template-columns:1fr}}
 </style>
+<style id="v45-mobile-polish">
+@media(max-width:900px){
+  .main{padding:calc(env(safe-area-inset-top) + 14px) 14px calc(92px + env(safe-area-inset-bottom))}
+  .topbar{position:relative;top:auto;background:transparent;backdrop-filter:none;padding:4px 0 10px;margin:0 0 8px;align-items:flex-end;gap:10px}
+  .topbar>div:first-child{min-width:0;flex:1}
+  .topbar .eyebrow{font-size:10px;line-height:1.25;letter-spacing:.16em;margin-bottom:5px;white-space:normal}
+  .topbar h1{font-size:27px;line-height:1.05;margin:0}
+  .topbar .primary{flex:0 0 auto;width:auto;max-width:145px;min-height:44px;padding:10px 14px;border-radius:13px;font-size:14px;line-height:1.1;white-space:nowrap}
+  .hero{margin-top:4px;padding:18px;border-radius:18px}
+  .hero h2{font-size:29px;line-height:1.12;margin:8px 0 6px}
+  .hero p{font-size:15px}
+  .stats{margin:12px 0 22px;gap:9px}
+  .stat{padding:13px 14px;min-height:92px}.stat span{font-size:13px}.stat b{font-size:24px;margin-top:6px}
+  .section-head{margin:18px 0 10px}.section-head h2{font-size:22px}
+  .card{padding:14px;border-radius:14px;grid-template-columns:1fr}.card .name{font-size:17px}.card .vehicle{font-size:14px}.card>button{min-height:42px}
+  .mobile-nav{min-height:64px;padding:7px 8px calc(7px + env(safe-area-inset-bottom))}
+}
+@media(max-width:380px){.topbar .primary{max-width:125px;padding:9px 10px;font-size:13px}.topbar h1{font-size:25px}}
+</style>
 </head>
 <body>
 <section id="auth" class="auth">
