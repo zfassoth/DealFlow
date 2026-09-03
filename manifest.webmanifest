@@ -1,0 +1,9 @@
+{
+  "name": "DealFlow",
+  "short_name": "DealFlow",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0f1720",
+  "description": "Personal automotive sales follow-up assistant"
+}
