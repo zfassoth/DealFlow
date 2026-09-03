@@ -71,6 +71,19 @@
 }
 @media(max-width:380px){.topbar .primary{max-width:125px;padding:9px 10px;font-size:13px}.topbar h1{font-size:25px}}
 </style>
+
+<style id="v451-ios-input-zoom-fix">
+/* iOS Safari/PWA auto-zooms focused form controls below 16px. */
+@media(max-width:900px){
+  input, textarea, select,
+  .search, .select,
+  #edit-notes, #edit-followup, #edit-status{
+    font-size:16px !important;
+  }
+  textarea{line-height:1.4}
+}
+</style>
+
 </head>
 <body>
 <section id="auth" class="auth">
