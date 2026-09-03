@@ -180,7 +180,12 @@ app.get("/api/customers", auth, async (req, res) => {
     );
     const grouped = {};
     for (const item of a.rows) (grouped[item.customer_id] ||= []).push(item);
-    res.json(c.rows.map(row => ({ ...row, activity: (grouped[row.id] || []).slice(0, 25) })));
+    res.json(c.rows.map(row => ({
+      ...row,
+      next_follow_up: row.next_follow_up ? new Date(row.next_follow_up).toISOString().slice(0,10) : "",
+      sold_date: row.sold_date ? new Date(row.sold_date).toISOString().slice(0,10) : "",
+      activity: (grouped[row.id] || []).slice(0, 25)
+    })));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Could not load customers." });
