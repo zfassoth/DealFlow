@@ -1,9 +1,58 @@
 {
+  "id": "/",
   "name": "DealFlow",
   "short_name": "DealFlow",
+  "description": "Personal automotive sales follow-up assistant",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "orientation": "portrait-primary",
   "background_color": "#f4f6f8",
   "theme_color": "#0f1720",
-  "description": "Personal automotive sales follow-up assistant"
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "short_name": "Today",
+      "url": "/#today",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "short_name": "Customers",
+      "url": "/#customers",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
 }
