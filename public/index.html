@@ -154,6 +154,48 @@
   }
 }
 
+
+/* V4.9.0 — rebuild Next Follow-Up field with its own fixed-width shell */
+#modal-bg .date-shell{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
+  border:1px solid #d0d5dd;
+  border-radius:10px;
+  background:#fff;
+  box-sizing:border-box;
+}
+#modal-bg .date-shell input[type="date"]{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  height:100%;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  padding:11px 12px !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+  -webkit-appearance:none;
+  appearance:none;
+}
+@media(max-width:760px){
+  #modal-bg .date-shell{
+    width:100% !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+  }
+  #modal-bg .date-shell input[type="date"]{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    inline-size:100% !important;
+  }
+}
+
 </style>
 <style id="v45-mobile-polish">
 @media(max-width:900px){
@@ -234,7 +276,7 @@
 <div id="app-toast" class="app-toast">DealFlow installed</div>
 
 <div id="modal-bg" class="backdrop hidden"><div class="modal"><div class="topbar"><div><div class="eyebrow">NEW OPPORTUNITY</div><h2>Add customer</h2></div><button class="ghost" id="close-modal">×</button></div><form id="form" class="formgrid">
-<label class="field">Name<input name="name" required></label><label class="field">Phone<input name="phone"></label><label class="field">Vehicle<input name="vehicle" required></label><label class="field">Status<select name="status"><option>New Lead</option><option>Contacted</option><option>Appointment</option><option>Showed</option><option>Working</option><option>Sold</option><option>Lost</option></select></label><label class="field">Lead source<input name="source"></label><label class="field">Next follow-up<input name="next_follow_up" type="date"></label><label class="field full">Notes<textarea name="notes" rows="4"></textarea></label><div class="actions full" style="justify-content:flex-end"><button type="button" class="ghost" id="cancel-modal">Cancel</button><button class="primary">Save Customer</button></div>
+<label class="field">Name<input name="name" required></label><label class="field">Phone<input name="phone"></label><label class="field">Vehicle<input name="vehicle" required></label><label class="field">Status<select name="status"><option>New Lead</option><option>Contacted</option><option>Appointment</option><option>Showed</option><option>Working</option><option>Sold</option><option>Lost</option></select></label><label class="field">Lead source<input name="source"></label><label class="field">Next follow-up<span class="date-shell"><input name="next_follow_up" type="date"></span></label><label class="field full">Notes<textarea name="notes" rows="4"></textarea></label><div class="actions full" style="justify-content:flex-end"><button type="button" class="ghost" id="cancel-modal">Cancel</button><button class="primary">Save Customer</button></div>
 </form></div></div>
 
 <div id="settings-bg" class="backdrop hidden"><div class="modal" style="max-width:520px;min-height:auto"><div class="topbar"><div><div class="eyebrow">ACCOUNT</div><h2 style="margin:6px 0 0">Settings</h2></div><button class="ghost" id="settings-close">×</button></div><div class="settings-card"><div class="settings-row"><div class="settings-row-copy"><b>Signed in as</b><span id="settings-email">—</span></div></div><div class="settings-row" style="display:block"><div class="settings-row-copy"><b>Sales profile</b><span>Used to personalize your AI follow-up texts.</span></div><label class="field" style="margin-top:12px">Your name<input id="profile-name" type="text" autocomplete="name" placeholder="e.g. Zane"></label><label class="field" style="margin-top:10px">Dealership name<input id="profile-dealership" type="text" placeholder="e.g. Zeigler Subaru"></label><button class="primary" id="save-profile" type="button" style="width:100%;margin-top:12px">Save Sales Profile</button><div id="profile-status" class="muted" style="margin-top:8px"></div></div><div class="settings-row"><div class="settings-row-copy"><b>Follow-up notifications</b><span id="settings-notify-status">Checking…</span></div><div class="settings-actions"><button class="ghost" id="settings-notify-test">Test</button><button class="secondary" id="settings-notify-toggle">Manage</button></div></div><div class="settings-danger"><button class="danger ghost" id="settings-logout" style="width:100%;min-height:46px">Sign out</button></div></div></div></div>
@@ -460,7 +502,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=489").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=490").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
