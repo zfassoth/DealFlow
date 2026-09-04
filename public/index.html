@@ -103,6 +103,22 @@
   body.keyboard-open #modal-bg .modal{ padding-bottom:260px !important; }
 }
 
+
+/* V4.8.8 — iPhone date-field alignment */
+@media (max-width:760px){
+  #modal-bg input[type="date"]{
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+    margin:0 !important;
+  }
+  #modal-bg label.field{
+    min-width:0;
+  }
+}
+
 </style>
 <style id="v45-mobile-polish">
 @media(max-width:900px){
@@ -409,7 +425,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=487").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=488").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
