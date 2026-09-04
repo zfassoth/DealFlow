@@ -90,6 +90,7 @@ async function initDb() {
 
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dealership_name TEXT DEFAULT '';
 
     CREATE INDEX IF NOT EXISTS idx_customers_user_id ON customers(user_id);
     CREATE INDEX IF NOT EXISTS idx_customers_followup ON customers(user_id, next_follow_up);
@@ -273,10 +274,27 @@ app.post("/api/logout", (req, res) => {
 
 app.get("/api/me", auth, async (req, res) => {
   const result = await pool.query(
-    "SELECT id,email,display_name FROM users WHERE id=$1",
+    "SELECT id,email,display_name,dealership_name FROM users WHERE id=$1",
     [req.session.userId]
   );
   res.json(result.rows[0]);
+});
+
+
+app.put("/api/profile", auth, async (req, res) => {
+  try {
+    const displayName = String(req.body.displayName || "").trim().slice(0, 100);
+    const dealershipName = String(req.body.dealershipName || "").trim().slice(0, 150);
+    if (!displayName) return res.status(400).json({ error: "Your name is required." });
+    await pool.query(
+      "UPDATE users SET display_name=$1, dealership_name=$2 WHERE id=$3",
+      [displayName, dealershipName, req.session.userId]
+    );
+    res.json({ ok: true, display_name: displayName, dealership_name: dealershipName });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not save profile." });
+  }
 });
 
 app.get("/api/push/config", auth, (req, res) => {
@@ -484,15 +502,20 @@ app.post("/api/customers/:id/followup", auth, async (req, res) => {
   }
 });
 
-function fallbackMessage(c) {
+function fallbackMessage(c, profile = {}) {
   const first = (c.name || "there").split(" ")[0];
   const notes = (c.notes || "").toLowerCase();
-  if (c.status === "Sold") return `Hey ${first}, hope you're still loving the ${c.vehicle}. If you know anyone starting to look for a vehicle, I'd really appreciate you sending them my way. I'll take great care of them.`;
-  if (notes.includes("wife") || notes.includes("spouse")) return `Hey ${first}, I was thinking about the ${c.vehicle} we talked about. Did you get a chance to go over everything at home? I'm happy to help with any questions or see if there's another way to make the numbers work better.`;
-  if (notes.includes("payment")) return `Hey ${first}, I wanted to circle back on the ${c.vehicle}. I know the payment was the biggest piece we were working through. If you're still interested, I can take another look at the options and see what makes the most sense.`;
-  if (c.status === "Appointment") return `Hey ${first}, just confirming we're still good for your visit to check out the ${c.vehicle}. I'll make sure everything is ready for you when you get here.`;
-  if (c.status === "New Lead") return `Hey ${first}, I'm reaching out about the ${c.vehicle}. I can help with availability, pricing, trade value, or anything else you want to know. What's most important to you right now?`;
-  return `Hey ${first}, I wanted to follow up on the ${c.vehicle} and see where things stand. If you're still considering it, I'm happy to help with any questions or next steps.`;
+  const rep = (profile.display_name || "").trim();
+  const dealer = (profile.dealership_name || "").trim();
+  const intro = rep ? `this is ${rep}${dealer ? ` over at ${dealer}` : ""}. ` : "";
+  const signoff = rep ? ` — ${rep}${dealer ? ` at ${dealer}` : ""}` : "";
+
+  if (c.status === "Sold") return `Hey ${first}, ${intro}Hope you're still loving the ${c.vehicle}. If you know anyone starting to look for a vehicle, I'd really appreciate you sending them my way. I'll take great care of them.${signoff}`;
+  if (notes.includes("wife") || notes.includes("spouse")) return `Hey ${first}, ${intro}I was thinking about the ${c.vehicle} we talked about. Did you get a chance to go over everything at home? I'm happy to help with any questions.${signoff}`;
+  if (notes.includes("payment")) return `Hey ${first}, ${intro}I wanted to circle back on the ${c.vehicle}. I know the payment was the biggest piece we were working through. If you're still interested, I can take another look at the options.${signoff}`;
+  if (c.status === "Appointment") return `Hey ${first}, ${intro}just confirming we're still good for your visit to check out the ${c.vehicle}. I'll make sure everything is ready for you.${signoff}`;
+  if (c.status === "New Lead") return `Hey ${first}, ${intro}I'm reaching out about the ${c.vehicle}. I can help with availability, pricing, trade value, or anything else you want to know.${signoff}`;
+  return `Hey ${first}, ${intro}I wanted to follow up on the ${c.vehicle} and see where things stand. If you're still considering it, I'm happy to help with any questions or next steps.${signoff}`;
 }
 
 app.post("/api/customers/:id/message", auth, async (req, res) => {
@@ -501,8 +524,10 @@ app.post("/api/customers/:id/message", auth, async (req, res) => {
     const result = await pool.query("SELECT * FROM customers WHERE id=$1 AND user_id=$2", [id, req.session.userId]);
     const c = result.rows[0];
     if (!c) return res.status(404).json({ error: "Not found" });
+    const profileResult = await pool.query("SELECT display_name,dealership_name FROM users WHERE id=$1", [req.session.userId]);
+    const profile = profileResult.rows[0] || {};
 
-    if (!process.env.OPENAI_API_KEY) return res.json({ message: fallbackMessage(c), mode: "fallback" });
+    if (!process.env.OPENAI_API_KEY) return res.json({ message: fallbackMessage(c, profile), mode: "fallback" });
 
     try {
       const OpenAI = require("openai");
@@ -510,14 +535,14 @@ app.post("/api/customers/:id/message", auth, async (req, res) => {
       const response = await client.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-5-mini",
         input: [
-          { role: "system", content: "Write one short, natural automotive salesperson follow-up text. Be warm, specific, non-pushy, and never invent facts. Do not include quotation marks." },
-          { role: "user", content: `Customer: ${c.name}\nVehicle: ${c.vehicle}\nStatus: ${c.status}\nNotes: ${c.notes}\nLast contact: ${c.last_contact}\nNext follow-up: ${c.next_follow_up || ""}` }
+          { role: "system", content: "Write one short, natural automotive salesperson follow-up text. Be warm, specific, non-pushy, and never invent facts. Use the salesperson name and dealership naturally so the customer knows who is contacting them. Usually identify the salesperson near the beginning on early/new-lead follow-ups; for established conversations, a short natural sign-off is fine. Avoid awkwardly repeating the name or dealership. Do not include quotation marks." },
+          { role: "user", content: `Salesperson: ${profile.display_name || ""}\nDealership: ${profile.dealership_name || ""}\nCustomer: ${c.name}\nVehicle: ${c.vehicle}\nStatus: ${c.status}\nNotes: ${c.notes}\nLast contact: ${c.last_contact}\nNext follow-up: ${c.next_follow_up || ""}` }
         ]
       });
       res.json({ message: response.output_text.trim(), mode: "ai" });
     } catch (aiErr) {
       console.error("AI fallback:", aiErr.message);
-      res.json({ message: fallbackMessage(c), mode: "fallback" });
+      res.json({ message: fallbackMessage(c, profile), mode: "fallback" });
     }
   } catch (e) {
     console.error(e);
