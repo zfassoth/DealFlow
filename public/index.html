@@ -58,6 +58,51 @@
 }
 
 @media(max-width:900px){.shell{grid-template-columns:1fr}.main{padding:20px 16px 40px}.stats{grid-template-columns:repeat(2,1fr)}.card{grid-template-columns:1fr}.kanban{grid-template-columns:repeat(5,260px)}}@media(max-width:560px){.topbar{align-items:flex-start}.topbar h1{font-size:26px}.hero{display:block}.formgrid{grid-template-columns:1fr}.full{grid-column:auto}.toolbar{display:grid}.select{width:100%}.detail{grid-template-columns:1fr}}
+
+/* V4.8.5 — iPhone keyboard + modal scrolling fix */
+@media (max-width: 760px){
+  .backdrop{
+    align-items:flex-start !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+    padding:max(12px, env(safe-area-inset-top)) 10px calc(140px + env(safe-area-inset-bottom)) !important;
+  }
+  .modal{
+    width:100% !important;
+    max-height:none !important;
+    height:auto !important;
+    overflow:visible !important;
+    margin:0 auto !important;
+  }
+  #modal-bg .modal{
+    min-height:calc(100dvh - 24px) !important;
+    padding-bottom:calc(180px + env(safe-area-inset-bottom)) !important;
+  }
+  #modal-bg .formgrid{ overflow:visible !important; }
+  #modal-bg textarea{
+    min-height:150px;
+    resize:vertical;
+    scroll-margin-top:120px;
+    scroll-margin-bottom:280px;
+  }
+  #modal-bg input,
+  #modal-bg select,
+  #modal-bg textarea,
+  #settings-bg input{
+    scroll-margin-top:120px;
+    scroll-margin-bottom:280px;
+  }
+  #modal-bg .actions{
+    position:sticky;
+    bottom:calc(10px + env(safe-area-inset-bottom));
+    z-index:5;
+    background:var(--panel, #fff);
+    padding:10px 0;
+  }
+  body.keyboard-open #modal-bg{ padding-bottom:360px !important; }
+  body.keyboard-open #modal-bg .modal{ padding-bottom:320px !important; }
+}
+
 </style>
 <style id="v45-mobile-polish">
 @media(max-width:900px){
@@ -302,11 +347,47 @@ $("settings-logout").onclick=async()=>{if(confirm("Sign out of DealFlow on this 
 
 $("notify-enable").onclick=async()=>{try{await toggleNotifications();}catch(e){alert(e.message);await refreshNotificationCard();}};
 $("notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("notify-test").textContent="Sent ✓";setTimeout(()=>$("notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
-$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};$("form").onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));await api("/api/customers",{method:"POST",body:JSON.stringify(data)});$("modal-bg").classList.add("hidden");e.target.reset();await load();};
+$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");$("modal-bg").scrollTop=0;};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};$("form").onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));await api("/api/customers",{method:"POST",body:JSON.stringify(data)});$("modal-bg").classList.add("hidden");e.target.reset();await load();};
 $("drawer-bg").onclick=e=>{if(e.target.id==="drawer-bg")$("drawer-bg").classList.add("hidden");};
 $("date").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});const h=new Date().getHours();$("greeting").textContent=h<12?"Good morning":h<17?"Good afternoon":"Good evening";
+
+// V4.8.5 — keep focused fields visible above the iPhone keyboard.
+function keepFieldVisible(el){
+  if(!el || !el.closest("#modal-bg")) return;
+  setTimeout(()=>{
+    try{ el.scrollIntoView({behavior:"smooth", block:"center", inline:"nearest"}); }catch(e){}
+  }, 260);
+}
+document.addEventListener("focusin", e=>{
+  const el=e.target;
+  if(!el.matches("input, textarea, select")) return;
+  document.body.classList.add("keyboard-open");
+  keepFieldVisible(el);
+});
+document.addEventListener("focusout", ()=>{
+  setTimeout(()=>{
+    const active=document.activeElement;
+    if(!active || !active.matches("input, textarea, select")) document.body.classList.remove("keyboard-open");
+  }, 220);
+});
+if(window.visualViewport){
+  const adjustForKeyboard=()=>{
+    const keyboardHeight=Math.max(0, window.innerHeight-window.visualViewport.height-window.visualViewport.offsetTop);
+    document.documentElement.style.setProperty("--keyboard-height", keyboardHeight+"px");
+    if(keyboardHeight>120){
+      document.body.classList.add("keyboard-open");
+      const active=document.activeElement;
+      if(active && active.closest("#modal-bg")) keepFieldVisible(active);
+    }else{
+      document.body.classList.remove("keyboard-open");
+    }
+  };
+  window.visualViewport.addEventListener("resize", adjustForKeyboard);
+  window.visualViewport.addEventListener("scroll", adjustForKeyboard);
+}
+
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=484").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=485").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
