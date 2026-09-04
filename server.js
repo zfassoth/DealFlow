@@ -43,6 +43,8 @@ async function initDb() {
       last_contact TEXT DEFAULT 'Never',
       sold_date DATE,
       priority TEXT DEFAULT '',
+      archived BOOLEAN NOT NULL DEFAULT FALSE,
+      archived_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -55,8 +57,12 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
     CREATE INDEX IF NOT EXISTS idx_customers_user_id ON customers(user_id);
     CREATE INDEX IF NOT EXISTS idx_customers_followup ON customers(user_id, next_follow_up);
+    CREATE INDEX IF NOT EXISTS idx_customers_archived ON customers(user_id, archived);
     CREATE INDEX IF NOT EXISTS idx_activities_customer ON activities(customer_id, created_at DESC);
   `);
 }
@@ -269,9 +275,17 @@ app.post("/api/customers/:id/action", auth, async (req, res) => {
         [todayISO(), id, req.session.userId]);
       await logActivity(req.session.userId, id, "Appointment set");
     } else if (action === "sold") {
-      await pool.query("UPDATE customers SET status='Sold', sold_date=$1, next_follow_up=$2, updated_at=NOW() WHERE id=$3 AND user_id=$4",
+      await pool.query("UPDATE customers SET status='Sold', sold_date=$1, next_follow_up=$2, archived=FALSE, archived_at=NULL, updated_at=NOW() WHERE id=$3 AND user_id=$4",
         [todayISO(), offsetISO(7), id, req.session.userId]);
       await logActivity(req.session.userId, id, "Marked sold · 7-day follow-up scheduled");
+    } else if (action === "archive") {
+      await pool.query("UPDATE customers SET archived=TRUE, archived_at=NOW(), next_follow_up=NULL, priority='', updated_at=NOW() WHERE id=$1 AND user_id=$2",
+        [id, req.session.userId]);
+      await logActivity(req.session.userId, id, "Archived · no longer shopping");
+    } else if (action === "restore") {
+      await pool.query("UPDATE customers SET archived=FALSE, archived_at=NULL, updated_at=NOW() WHERE id=$1 AND user_id=$2",
+        [id, req.session.userId]);
+      await logActivity(req.session.userId, id, "Restored to active customers");
     } else if (action === "hot") {
       const next = c.priority === "hot" ? "" : "hot";
       await pool.query("UPDATE customers SET priority=$1, updated_at=NOW() WHERE id=$2 AND user_id=$3",
@@ -284,6 +298,21 @@ app.post("/api/customers/:id/action", auth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Could not update customer." });
+  }
+});
+
+app.delete("/api/customers/:id", auth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await pool.query(
+      "DELETE FROM customers WHERE id=$1 AND user_id=$2 RETURNING id",
+      [id, req.session.userId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not delete customer." });
   }
 });
 
