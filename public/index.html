@@ -93,14 +93,14 @@
     scroll-margin-bottom:280px;
   }
   #modal-bg .actions{
-    position:sticky;
-    bottom:calc(10px + env(safe-area-inset-bottom));
-    z-index:5;
-    background:var(--panel, #fff);
-    padding:10px 0;
+    position:static !important;
+    z-index:auto !important;
+    background:transparent !important;
+    padding:14px 0 calc(20px + env(safe-area-inset-bottom)) !important;
+    margin-top:8px;
   }
   body.keyboard-open #modal-bg{ padding-bottom:360px !important; }
-  body.keyboard-open #modal-bg .modal{ padding-bottom:320px !important; }
+  body.keyboard-open #modal-bg .modal{ padding-bottom:260px !important; }
 }
 
 </style>
@@ -387,7 +387,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=485").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=486").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
