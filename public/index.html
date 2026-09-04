@@ -351,43 +351,65 @@ $("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-
 $("drawer-bg").onclick=e=>{if(e.target.id==="drawer-bg")$("drawer-bg").classList.add("hidden");};
 $("date").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});const h=new Date().getHours();$("greeting").textContent=h<12?"Good morning":h<17?"Good afternoon":"Good evening";
 
-// V4.8.5 — keep focused fields visible above the iPhone keyboard.
-function keepFieldVisible(el){
+// V4.8.7 — only move a field when the iPhone keyboard actually covers it.
+// Normal inputs no longer auto-scroll just because they receive focus.
+function ensureFieldVisible(el){
   if(!el || !el.closest("#modal-bg")) return;
-  setTimeout(()=>{
-    try{ el.scrollIntoView({behavior:"smooth", block:"center", inline:"nearest"}); }catch(e){}
-  }, 260);
+  const vv=window.visualViewport;
+  const visibleTop=vv ? vv.offsetTop : 0;
+  const visibleBottom=visibleTop + (vv ? vv.height : window.innerHeight);
+  const rect=el.getBoundingClientRect();
+  const topGap=90;
+  const bottomGap=26;
+
+  if(rect.bottom > visibleBottom-bottomGap){
+    const amount=rect.bottom-(visibleBottom-bottomGap);
+    $("modal-bg").scrollBy({top:amount+18, behavior:"auto"});
+  }else if(rect.top < visibleTop+topGap){
+    const amount=(visibleTop+topGap)-rect.top;
+    $("modal-bg").scrollBy({top:-amount-12, behavior:"auto"});
+  }
 }
+
 document.addEventListener("focusin", e=>{
   const el=e.target;
   if(!el.matches("input, textarea, select")) return;
-  document.body.classList.add("keyboard-open");
-  keepFieldVisible(el);
+  if(el.closest("#modal-bg")){
+    setTimeout(()=>ensureFieldVisible(el), 320);
+  }
 });
+
 document.addEventListener("focusout", ()=>{
   setTimeout(()=>{
     const active=document.activeElement;
     if(!active || !active.matches("input, textarea, select")) document.body.classList.remove("keyboard-open");
   }, 220);
 });
+
 if(window.visualViewport){
+  let lastKeyboardOpen=false;
   const adjustForKeyboard=()=>{
     const keyboardHeight=Math.max(0, window.innerHeight-window.visualViewport.height-window.visualViewport.offsetTop);
     document.documentElement.style.setProperty("--keyboard-height", keyboardHeight+"px");
-    if(keyboardHeight>120){
+    const keyboardOpen=keyboardHeight>120;
+
+    if(keyboardOpen){
       document.body.classList.add("keyboard-open");
-      const active=document.activeElement;
-      if(active && active.closest("#modal-bg")) keepFieldVisible(active);
+      // Only re-check when the keyboard first opens, not on every viewport movement.
+      if(!lastKeyboardOpen){
+        const active=document.activeElement;
+        if(active && active.closest("#modal-bg")) setTimeout(()=>ensureFieldVisible(active), 80);
+      }
     }else{
       document.body.classList.remove("keyboard-open");
     }
+    lastKeyboardOpen=keyboardOpen;
   };
   window.visualViewport.addEventListener("resize", adjustForKeyboard);
-  window.visualViewport.addEventListener("scroll", adjustForKeyboard);
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=486").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=487").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
