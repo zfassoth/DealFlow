@@ -119,6 +119,41 @@
   }
 }
 
+
+/* V4.8.9 — force iPhone date field to stay inside the form column */
+@media (max-width:760px){
+  #modal-bg .formgrid,
+  #modal-bg .field{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+
+  #modal-bg .field > input,
+  #modal-bg .field > select,
+  #modal-bg .field > textarea{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+
+  #modal-bg input[type="date"]{
+    display:block !important;
+    inline-size:100% !important;
+    max-inline-size:100% !important;
+    min-inline-size:0 !important;
+    -webkit-min-logical-width:0 !important;
+    box-sizing:border-box !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    position:relative !important;
+    left:0 !important;
+    right:auto !important;
+  }
+}
+
 </style>
 <style id="v45-mobile-polish">
 @media(max-width:900px){
@@ -425,7 +460,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=488").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=489").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
