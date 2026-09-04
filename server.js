@@ -4,6 +4,7 @@ const pgSession = require("connect-pg-simple")(session);
 const { Pool } = require("pg");
 const path = require("path");
 const crypto = require("crypto");
+const webpush = require("web-push");
 require("dotenv").config();
 
 if (!process.env.DATABASE_URL) {
@@ -13,6 +14,19 @@ if (!process.env.DATABASE_URL) {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const NOTIFICATION_JOB_SECRET = process.env.NOTIFICATION_JOB_SECRET || "";
+const NOTIFICATION_TIME_ZONE = process.env.NOTIFICATION_TIME_ZONE || "America/Chicago";
+const NOTIFICATION_HOUR = Math.max(0, Math.min(23, Number(process.env.NOTIFICATION_HOUR || 9)));
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:dealflow@example.com",
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+  );
+}
 
 const isRender = !!process.env.RENDER;
 const pool = new Pool({
@@ -57,6 +71,23 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT UNIQUE NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_runs (
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      local_date DATE NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY(user_id, local_date)
+    );
+
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
@@ -64,6 +95,7 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_customers_followup ON customers(user_id, next_follow_up);
     CREATE INDEX IF NOT EXISTS idx_customers_archived ON customers(user_id, archived);
     CREATE INDEX IF NOT EXISTS idx_activities_customer ON activities(customer_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
   `);
 }
 
@@ -116,6 +148,71 @@ async function logActivity(userId, customerId, text) {
     "INSERT INTO activities(user_id, customer_id, text) VALUES($1,$2,$3)",
     [userId, customerId, text]
   );
+}
+
+function localDateAndHour(timeZone = NOTIFICATION_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date());
+  const get = type => parts.find(p => p.type === type)?.value || "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")) };
+}
+
+async function sendPushToUser(userId, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return { sent: 0, disabled: true };
+  const subs = await pool.query("SELECT * FROM push_subscriptions WHERE user_id=$1", [userId]);
+  let sent = 0;
+  for (const row of subs.rows) {
+    const subscription = { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } };
+    try {
+      await webpush.sendNotification(subscription, JSON.stringify(payload));
+      sent++;
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await pool.query("DELETE FROM push_subscriptions WHERE id=$1", [row.id]);
+      } else {
+        console.error("Push send failed:", err.statusCode || err.message);
+      }
+    }
+  }
+  return { sent };
+}
+
+async function runDueNotifications(force = false) {
+  const { date, hour } = localDateAndHour();
+  if (!force && hour < NOTIFICATION_HOUR) return { ok: true, skipped: "before_notification_hour", date, hour };
+
+  const users = await pool.query("SELECT DISTINCT user_id FROM push_subscriptions");
+  let usersNotified = 0, pushesSent = 0;
+  for (const u of users.rows) {
+    if (!force) {
+      const already = await pool.query("SELECT 1 FROM notification_runs WHERE user_id=$1 AND local_date=$2", [u.user_id, date]);
+      if (already.rows[0]) continue;
+    }
+    const due = await pool.query(`
+      SELECT id,name,vehicle,next_follow_up FROM customers
+      WHERE user_id=$1 AND archived=FALSE AND status NOT IN ('Sold','Lost')
+        AND next_follow_up IS NOT NULL AND next_follow_up <= $2::date
+      ORDER BY next_follow_up ASC, updated_at DESC
+    `, [u.user_id, date]);
+    if (!due.rows.length) continue;
+
+    let payload;
+    if (due.rows.length === 1) {
+      const c = due.rows[0];
+      payload = { title: "DealFlow · Follow-up Due", body: `${c.name} · ${c.vehicle}
+Time to follow up.`, url: "/?view=today", tag: `dealflow-due-${date}` };
+    } else {
+      const first = due.rows[0];
+      payload = { title: `DealFlow · ${due.rows.length} Follow-ups Due`, body: `${first.name} · ${first.vehicle}${due.rows.length > 1 ? ` + ${due.rows.length - 1} more` : ""}`, url: "/?view=today", tag: `dealflow-due-${date}` };
+    }
+    const result = await sendPushToUser(u.user_id, payload);
+    if (result.sent > 0) {
+      pushesSent += result.sent; usersNotified++;
+      if (!force) await pool.query("INSERT INTO notification_runs(user_id, local_date) VALUES($1,$2) ON CONFLICT DO NOTHING", [u.user_id, date]);
+    }
+  }
+  return { ok: true, date, hour, usersNotified, pushesSent };
 }
 
 app.get("/api/health", async (req, res) => {
@@ -172,6 +269,52 @@ app.get("/api/me", auth, async (req, res) => {
     [req.session.userId]
   );
   res.json(result.rows[0]);
+});
+
+app.get("/api/push/config", auth, (req, res) => {
+  res.json({ enabled: !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), publicKey: VAPID_PUBLIC_KEY, hour: NOTIFICATION_HOUR, timeZone: NOTIFICATION_TIME_ZONE });
+});
+
+app.get("/api/push/status", auth, async (req, res) => {
+  const count = await pool.query("SELECT COUNT(*)::int AS count FROM push_subscriptions WHERE user_id=$1", [req.session.userId]);
+  res.json({ subscribed: count.rows[0].count > 0, subscriptions: count.rows[0].count });
+});
+
+app.post("/api/push/subscribe", auth, async (req, res) => {
+  try {
+    const sub = req.body;
+    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return res.status(400).json({ error: "Invalid push subscription." });
+    await pool.query(`
+      INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth)
+      VALUES($1,$2,$3,$4)
+      ON CONFLICT(endpoint) DO UPDATE SET user_id=EXCLUDED.user_id,p256dh=EXCLUDED.p256dh,auth=EXCLUDED.auth,updated_at=NOW()
+    `, [req.session.userId, sub.endpoint, sub.keys.p256dh, sub.keys.auth]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Could not enable notifications." }); }
+});
+
+app.post("/api/push/unsubscribe", auth, async (req, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (endpoint) await pool.query("DELETE FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2", [endpoint, req.session.userId]);
+    else await pool.query("DELETE FROM push_subscriptions WHERE user_id=$1", [req.session.userId]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Could not disable notifications." }); }
+});
+
+app.post("/api/push/test", auth, async (req, res) => {
+  try {
+    const result = await sendPushToUser(req.session.userId, { title: "DealFlow", body: "Notifications are working. You’ll get a reminder when follow-ups are due.", url: "/?view=today", tag: "dealflow-test" });
+    if (result.disabled) return res.status(503).json({ error: "Push is not configured on the server yet." });
+    if (!result.sent) return res.status(400).json({ error: "No active notification subscription found." });
+    res.json({ ok: true, sent: result.sent });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Could not send test notification." }); }
+});
+
+app.post("/api/notifications/run", async (req, res) => {
+  if (!NOTIFICATION_JOB_SECRET || req.get("x-dealflow-secret") !== NOTIFICATION_JOB_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  try { res.json(await runDueNotifications(false)); }
+  catch (e) { console.error(e); res.status(500).json({ error: "Notification job failed." }); }
 });
 
 app.get("/api/customers", auth, async (req, res) => {
@@ -379,7 +522,11 @@ app.get("*", (req, res) => {
 });
 
 initDb()
-  .then(() => app.listen(PORT, () => console.log(`DealFlow running on port ${PORT}`)))
+  .then(() => app.listen(PORT, () => {
+    console.log(`DealFlow running on port ${PORT}`);
+    // Best-effort while the service is awake. The included GitHub Action wakes the free Render service reliably.
+    setInterval(() => runDueNotifications(false).catch(err => console.error("Notification interval:", err.message)), 15 * 60 * 1000);
+  }))
   .catch(err => {
     console.error("Database initialization failed:", err);
     process.exit(1);
