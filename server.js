@@ -135,13 +135,21 @@ function auth(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: "Not signed in" });
   next();
 }
+function dateISOInTimeZone(date = new Date(), timeZone = NOTIFICATION_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const get = type => parts.find(p => p.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dateISOInTimeZone(new Date());
 }
 function offsetISO(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const base = todayISO();
+  const [y,m,d] = base.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
+  return utc.toISOString().slice(0, 10);
 }
 async function logActivity(userId, customerId, text) {
   await pool.query(
