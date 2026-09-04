@@ -1,4 +1,4 @@
-const CACHE="dealflow-v4-8-2";
+const CACHE="dealflow-v4-8-3";
 const STATIC=["/manifest.webmanifest","/icons/icon-192.png","/icons/icon-512.png","/icons/apple-touch-icon.png"];
 
 self.addEventListener("install",event=>{
