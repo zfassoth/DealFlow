@@ -23,6 +23,7 @@
 
 .install-card{display:none;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:0 0 18px;box-shadow:var(--shadow)}
 .install-card.show{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.notify-card{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:0 0 18px;box-shadow:var(--shadow)}.notify-copy{display:grid;gap:3px}.notify-copy span{font-size:12px;color:var(--muted)}.notify-actions{display:flex;gap:8px;flex-wrap:wrap}.notify-card.enabled{border-color:#b7e3cf;background:#f4fbf7}.notify-card.warn{border-color:#fedf89;background:#fffaeb}
 .install-copy{min-width:0}.install-copy b{display:block}.install-copy span{font-size:12px;color:var(--muted)}
 .mobile-nav{display:none}
 .app-toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%) translateY(20px);z-index:50;background:#111827;color:#fff;padding:11px 14px;border-radius:999px;font-size:12px;font-weight:800;opacity:0;pointer-events:none;transition:.2s}
@@ -111,6 +112,10 @@
       <div class="install-copy"><b>Install DealFlow</b><span id="install-text">Add it to your phone for one-tap access.</span></div>
       <button class="primary" id="install-btn">Install</button>
     </div>
+    <div id="notify-card" class="notify-card hidden">
+      <div class="notify-copy"><b id="notify-title">Follow-up notifications</b><span id="notify-text">Get a reminder when customers are due for follow-up.</span></div>
+      <div class="notify-actions"><button class="primary" id="notify-enable">Enable</button><button class="ghost hidden" id="notify-test">Test</button></div>
+    </div>
     <section id="today" class="view active"><div class="hero"><div><div style="font-size:13px;color:#ccd5df;font-weight:700" id="greeting">Good afternoon</div><h2>Here’s what needs your attention today.</h2></div><div id="date"></div></div><div class="stats" id="stats"></div><h3>Priority follow-ups</h3><div class="list" id="priority"></div></section>
     <section id="customers" class="view"><div class="toolbar"><input id="search" class="search" placeholder="Search name, vehicle, status..."><select id="filter" class="select"><option value="current">All current customers</option><option>New Lead</option><option>Contacted</option><option>Appointment</option><option>Showed</option><option>Working</option><option>Sold</option><option>Lost</option><option value="archived">Archived</option></select></div><div class="list" id="customer-list"></div></section>
     <section id="pipeline" class="view"><div class="kanban" id="board"></div></section>
@@ -139,11 +144,36 @@ const esc=s=>(s??"").toString().replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;","
 const today=()=>new Date().toISOString().slice(0,10);
 const pretty=iso=>iso?new Date(iso+"T12:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}):"Not scheduled";
 async function api(url,opts={}){ const r=await fetch(url,{headers:{"Content-Type":"application/json",...(opts.headers||{})},...opts}); if(r.status===401){showAuth();throw new Error("Not signed in")} const data=await r.json().catch(()=>({})); if(!r.ok) throw new Error(data.error||"Request failed"); return data; }
+function urlBase64ToUint8Array(base64String){const padding="=".repeat((4-base64String.length%4)%4);const base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/");const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));}
+async function getPushRegistration(){if(!("serviceWorker" in navigator))throw new Error("Service workers are not supported on this device.");return await navigator.serviceWorker.ready;}
+async function refreshNotificationCard(){
+  const card=$("notify-card"),enable=$("notify-enable"),test=$("notify-test"),title=$("notify-title"),text=$("notify-text");
+  if(!card||!me)return;
+  card.classList.remove("hidden","enabled","warn");
+  if(!("Notification" in window)||!("PushManager" in window)){title.textContent="Notifications unavailable";text.textContent="This browser does not support DealFlow push notifications.";enable.classList.add("hidden");test.classList.add("hidden");return;}
+  try{
+    const cfg=await api("/api/push/config");
+    if(!cfg.enabled){card.classList.add("warn");title.textContent="Notifications need server setup";text.textContent="Add the VAPID keys in Render, then reopen DealFlow.";enable.classList.add("hidden");test.classList.add("hidden");return;}
+    enable.classList.remove("hidden");
+    const reg=await getPushRegistration();const sub=await reg.pushManager.getSubscription();
+    if(sub&&Notification.permission==="granted"){card.classList.add("enabled");title.textContent="Follow-up notifications are on";text.textContent=`Daily reminders start around ${cfg.hour}:00 in ${cfg.timeZone.replace("America/","").replace("_"," ")}.`;enable.textContent="Turn Off";test.classList.remove("hidden");}
+    else if(Notification.permission==="denied"){card.classList.add("warn");title.textContent="Notifications are blocked";text.textContent="Allow notifications for DealFlow in iPhone Settings, then reopen the app.";enable.textContent="Blocked";enable.disabled=true;test.classList.add("hidden");}
+    else{title.textContent="Follow-up notifications";text.textContent="Get a reminder when customers are due for follow-up.";enable.textContent="Enable";enable.disabled=false;test.classList.add("hidden");}
+  }catch(e){card.classList.add("warn");text.textContent=e.message;}
+}
+async function toggleNotifications(){
+  const reg=await getPushRegistration();const existing=await reg.pushManager.getSubscription();
+  if(existing){await api("/api/push/unsubscribe",{method:"POST",body:JSON.stringify({endpoint:existing.endpoint})});await existing.unsubscribe();await refreshNotificationCard();return;}
+  const cfg=await api("/api/push/config");if(!cfg.enabled)throw new Error("Push is not configured on the server yet.");
+  const permission=await Notification.requestPermission();if(permission!=="granted")throw new Error("Notification permission was not granted.");
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.publicKey)});
+  await api("/api/push/subscribe",{method:"POST",body:JSON.stringify(sub)});await refreshNotificationCard();
+}
 function showAuth(){ $("auth").classList.remove("hidden");$("app").classList.add("hidden"); }
 function showApp(){ $("auth").classList.add("hidden");$("app").classList.remove("hidden"); }
-async function boot(){ try{me=await api("/api/me");showApp();await load();}catch(e){showAuth();} }
+async function boot(){ try{me=await api("/api/me");showApp();await load();await refreshNotificationCard();}catch(e){showAuth();} }
 $("auth-toggle").onclick=()=>{registering=!registering;$("auth-title").textContent=registering?"Create account":"Sign in";$("auth-submit").textContent=registering?"Create account":"Sign in";$("auth-toggle").textContent=registering?"Back to sign in":"Create account";document.querySelectorAll(".reg-only").forEach(x=>x.classList.toggle("hidden",!registering));};
-$("auth-submit").onclick=async()=>{try{$("auth-error").textContent="";const body={email:$("email").value,password:$("password").value,displayName:$("display-name").value};await api(registering?"/api/register":"/api/login",{method:"POST",body:JSON.stringify(body)});me=await api("/api/me");showApp();await load();}catch(e){$("auth-error").textContent=e.message;}};
+$("auth-submit").onclick=async()=>{try{$("auth-error").textContent="";const body={email:$("email").value,password:$("password").value,displayName:$("display-name").value};await api(registering?"/api/register":"/api/login",{method:"POST",body:JSON.stringify(body)});me=await api("/api/me");showApp();await load();await refreshNotificationCard();}catch(e){$("auth-error").textContent=e.message;}};
 $("logout").onclick=async()=>{await api("/api/logout",{method:"POST"});showAuth();};
 async function load(){customers=await api("/api/customers");render();}
 function card(c){const hot=c.priority==="hot", sold=c.status==="Sold", archived=!!c.archived, overdue=!archived&&c.next_follow_up&&c.next_follow_up<today();return `<article class="card" data-id="${c.id}"><div><div class="name">${esc(c.name)}</div><div class="vehicle">${esc(c.vehicle)}</div><div class="meta"><span class="pill ${hot?"hot":""} ${sold?"sold":""}">${esc(c.status)}</span>${archived?`<span class="pill archived">Archived</span>`:""}${c.source?`<span class="pill">${esc(c.source)}</span>`:""}</div></div><div class="follow">${archived?"Customer status":"Next follow-up"}<strong>${archived?"No longer shopping":`${overdue?"Overdue · ":""}${pretty(c.next_follow_up)}`}</strong></div><button class="ghost">Open</button></article>`}
@@ -214,6 +244,8 @@ window.addEventListener("appinstalled",()=>{
   const t=$("app-toast");t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);
 });
 
+$("notify-enable").onclick=async()=>{try{await toggleNotifications();}catch(e){alert(e.message);await refreshNotificationCard();}};
+$("notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("notify-test").textContent="Sent ✓";setTimeout(()=>$("notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
 $("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};$("form").onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));await api("/api/customers",{method:"POST",body:JSON.stringify(data)});$("modal-bg").classList.add("hidden");e.target.reset();await load();};
 $("drawer-bg").onclick=e=>{if(e.target.id==="drawer-bg")$("drawer-bg").classList.add("hidden");};
 $("date").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});const h=new Date().getHours();$("greeting").textContent=h<12?"Good morning":h<17?"Good afternoon":"Good evening";
