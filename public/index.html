@@ -316,19 +316,28 @@ async function toggleNotifications(){
   const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.publicKey)});
   await api("/api/push/subscribe",{method:"POST",body:JSON.stringify(sub)});await refreshNotificationCard();
 }
+async function restorePushForCurrentUser(){
+  try{
+    if(!me || !("Notification" in window) || Notification.permission!=="granted" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(sub){
+      await api("/api/push/subscribe",{method:"POST",body:JSON.stringify(sub)});
+    }
+  }catch(e){
+    console.warn("Could not restore push subscription:",e.message);
+  }
+}
+
 function showAuth(){ document.body.classList.add("auth-mode");$("auth").classList.remove("hidden");$("app").classList.add("hidden"); }
 function showApp(){ document.body.classList.remove("auth-mode");$("auth").classList.add("hidden");$("app").classList.remove("hidden"); }
-async function boot(){ try{me=await api("/api/me");showApp();await load();await refreshNotificationCard();}catch(e){showAuth();} }
+async function boot(){ try{me=await api("/api/me");showApp();await restorePushForCurrentUser();await load();await refreshNotificationCard();}catch(e){showAuth();} }
 $("auth-toggle").onclick=()=>{registering=!registering;$("auth-title").textContent=registering?"Create account":"Sign in";$("auth-submit").textContent=registering?"Create account":"Sign in";$("auth-toggle").textContent=registering?"Back to sign in":"Create account";document.querySelectorAll(".reg-only").forEach(x=>x.classList.toggle("hidden",!registering));};
-$("auth-submit").onclick=async()=>{try{$("auth-error").textContent="";const body={email:$("email").value,password:$("password").value,displayName:$("display-name").value};await api(registering?"/api/register":"/api/login",{method:"POST",body:JSON.stringify(body)});me=await api("/api/me");showApp();await load();await refreshNotificationCard();}catch(e){$("auth-error").textContent=e.message;}};
+$("auth-submit").onclick=async()=>{try{$("auth-error").textContent="";const body={email:$("email").value,password:$("password").value,displayName:$("display-name").value};await api(registering?"/api/register":"/api/login",{method:"POST",body:JSON.stringify(body)});me=await api("/api/me");showApp();await restorePushForCurrentUser();await load();await refreshNotificationCard();}catch(e){$("auth-error").textContent=e.message;}};
 async function signOut(){
-  try{
-    if("serviceWorker" in navigator && "PushManager" in window){
-      const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
-      if(sub){try{await api("/api/push/unsubscribe",{method:"POST",body:JSON.stringify({endpoint:sub.endpoint})});}catch(e){}try{await sub.unsubscribe();}catch(e){}}
-    }
-  }catch(e){}
+  // Keep this device's push subscription alive when signing out.
   await api("/api/logout",{method:"POST"});
+  me=null;
   $("settings-bg").classList.add("hidden");
   showAuth();
 }
@@ -436,7 +445,7 @@ $("settings-close").onclick=()=>$("settings-bg").classList.add("hidden");
 $("settings-bg").onclick=e=>{if(e.target.id==="settings-bg")$("settings-bg").classList.add("hidden");};
 $("settings-notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("settings-notify-test").textContent="Sent ✓";setTimeout(()=>$("settings-notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
 $("settings-notify-toggle").onclick=async()=>{try{await toggleNotifications();await refreshSettings();}catch(e){alert(e.message);await refreshSettings();}};
-$("settings-logout").onclick=async()=>{if(confirm("Sign out of DealFlow on this device? Notifications on this device will also be turned off."))await signOut();};
+$("settings-logout").onclick=async()=>{if(confirm("Sign out of DealFlow on this device?"))await signOut();};
 
 $("notify-enable").onclick=async()=>{try{await toggleNotifications();}catch(e){alert(e.message);await refreshNotificationCard();}};
 $("notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("notify-test").textContent="Sent ✓";setTimeout(()=>$("notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
@@ -502,7 +511,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=490").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=491").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
