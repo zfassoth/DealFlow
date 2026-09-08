@@ -375,7 +375,8 @@ app.get("/api/customers", auth, async (req, res) => {
       ...row,
       next_follow_up: row.next_follow_up ? new Date(row.next_follow_up).toISOString().slice(0,10) : "",
       sold_date: row.sold_date ? new Date(row.sold_date).toISOString().slice(0,10) : "",
-      generated_messages: (messageGroups[row.id] || []).slice(0, 20),\n      activity: (grouped[row.id] || []).slice(0, 25)
+      generated_messages: (messageGroups[row.id] || []).slice(0, 20),
+      activity: (grouped[row.id] || []).slice(0, 25)
     })));
   } catch (e) {
     console.error(e);
