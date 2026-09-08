@@ -201,7 +201,7 @@ async function runDueNotifications(force = false) {
     const due = await pool.query(`
       SELECT id,name,vehicle,next_follow_up FROM customers
       WHERE user_id=$1 AND archived=FALSE AND status NOT IN ('Sold','Lost')
-        AND next_follow_up IS NOT NULL AND next_follow_up <= $2::date
+        AND next_follow_up IS NOT NULL AND next_follow_up = $2::date
       ORDER BY next_follow_up ASC, updated_at DESC
     `, [u.user_id, date]);
     if (!due.rows.length) continue;
