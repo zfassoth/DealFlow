@@ -363,7 +363,8 @@ $("save-update").onclick=async()=>{
   if(!vehicle){alert("Please enter the vehicle.");return;}
   const payload={...c,vehicle,status:$("edit-status").value,next_follow_up:$("edit-followup").value||null,notes:$("edit-notes").value};
   await api(`/api/customers/${id}`,{method:"PUT",body:JSON.stringify(payload)});
-  await load(); openCustomer(id);
+  await load();
+  $("drawer-bg").classList.add("hidden");
 };
 const moveSold=$("move-sold"); if(moveSold) moveSold.onclick=async()=>{
   const soldVehicle=prompt("Vehicle purchased — enter year, make, and model:",c.vehicle||"");
@@ -524,7 +525,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=494").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=496").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
