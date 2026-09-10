@@ -387,7 +387,33 @@ app.get("/api/customers", auth, async (req, res) => {
 app.post("/api/customers", auth, async (req, res) => {
   try {
     const c = req.body;
-    const soldDate = c.status === "Sold" ? todayISO() : null;
+    const name = (c.name || "").trim();
+    const phone = (c.phone || "").trim();
+    const vehicle = (c.vehicle || "").trim();
+    const status = c.status || "New Lead";
+    const source = (c.source || "").trim();
+
+    // Protect against accidental double taps / request retries creating the
+    // same customer more than once. Only blocks an exact match created in
+    // the last 30 seconds.
+    const duplicate = await pool.query(`
+      SELECT id FROM customers
+      WHERE user_id=$1
+        AND lower(trim(name))=lower($2)
+        AND trim(COALESCE(phone,''))=$3
+        AND lower(trim(vehicle))=lower($4)
+        AND status=$5
+        AND lower(trim(COALESCE(source,'')))=lower($6)
+        AND created_at >= NOW() - INTERVAL '30 seconds'
+      ORDER BY id DESC
+      LIMIT 1
+    `, [req.session.userId, name, phone, vehicle, status, source]);
+
+    if (duplicate.rows[0]) {
+      return res.json({ id: duplicate.rows[0].id, duplicatePrevented: true });
+    }
+
+    const soldDate = status === "Sold" ? todayISO() : null;
     const result = await pool.query(`
       INSERT INTO customers
       (user_id,name,phone,vehicle,status,source,notes,next_follow_up,last_contact,sold_date,priority)
@@ -395,11 +421,11 @@ app.post("/api/customers", auth, async (req, res) => {
       RETURNING id
     `, [
       req.session.userId,
-      c.name,
-      c.phone || "",
-      c.vehicle,
-      c.status || "New Lead",
-      c.source || "",
+      name,
+      phone,
+      vehicle,
+      status,
+      source,
       c.notes || "",
       c.next_follow_up || todayISO(),
       "Never",
