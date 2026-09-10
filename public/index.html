@@ -487,7 +487,27 @@ $("settings-logout").onclick=async()=>{if(confirm("Sign out of DealFlow on this 
 
 $("notify-enable").onclick=async()=>{try{await toggleNotifications();}catch(e){alert(e.message);await refreshNotificationCard();}};
 $("notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("notify-test").textContent="Sent ✓";setTimeout(()=>$("notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
-$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");$("modal-bg").scrollTop=0;};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};$("form").onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));await api("/api/customers",{method:"POST",body:JSON.stringify(data)});$("modal-bg").classList.add("hidden");e.target.reset();await load();};
+$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");$("modal-bg").scrollTop=0;};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};let customerSubmitBusy=false;
+$("form").onsubmit=async e=>{
+  e.preventDefault();
+  if(customerSubmitBusy)return;
+  customerSubmitBusy=true;
+  const submitBtn=e.target.querySelector('button[type="submit"],button:not([type])');
+  const originalText=submitBtn?.textContent||"Save Customer";
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent="Saving…";}
+  try{
+    const data=Object.fromEntries(new FormData(e.target));
+    await api("/api/customers",{method:"POST",body:JSON.stringify(data)});
+    $("modal-bg").classList.add("hidden");
+    e.target.reset();
+    await load();
+  }catch(err){
+    alert(err.message);
+  }finally{
+    customerSubmitBusy=false;
+    if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=originalText;}
+  }
+};
 $("drawer-bg").onclick=e=>{if(e.target.id==="drawer-bg")$("drawer-bg").classList.add("hidden");};
 $("date").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});const h=new Date().getHours();$("greeting").textContent=h<12?"Good morning":h<17?"Good afternoon":"Good evening";
 
@@ -549,7 +569,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=4100").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=4101").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
