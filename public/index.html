@@ -378,9 +378,8 @@ async function openCustomer(id){let c=customers.find(x=>x.id==id);if(!c)return;l
   <label class="field">Notes<textarea id="edit-notes" rows="4">${esc(c.notes||"")}</textarea></label>
   <button class="primary" id="save-update" style="margin-top:10px">Save Update</button>
 </div>
-<div class="drawer-note cleanup-note"><b>Customer cleanup</b><div class="muted" style="margin-top:5px">${c.archived?"This customer is archived and hidden from your active workflow.":"Keep sold customers for future follow-up, archive people who stopped shopping, or permanently delete duplicates/tests."}</div><div class="actions" style="margin-top:12px">${c.archived?`<button class="secondary" id="restore-customer">Restore Customer</button><button class="danger ghost" id="delete-customer">Delete Permanently</button>`:`${c.status!=="Sold"?`<button class="secondary" id="move-sold">Move to Sold</button>`:""}<button class="secondary" id="archive-customer">No Longer Shopping</button><button class="danger ghost" id="delete-customer">Delete Permanently</button>`}</div></div>
-<div class="drawer-note"><b>Generated follow-ups</b><div class="muted" style="margin-top:5px">Suggestions only — not confirmation that a text was sent.</div><div style="margin-top:10px">${(c.generated_messages||[]).length?c.generated_messages.map(a=>`<div style="border-top:1px solid var(--line);padding:10px 0"><div class="muted">${prettyTimestamp(a.created_at)} · ${esc(a.status)}</div><div style="margin-top:5px;line-height:1.5">${esc(a.message)}</div></div>`).join(""):'<div class="muted">No previous suggestions.</div>'}</div></div>
-<div class="drawer-note"><b>Activity</b><div style="margin-top:10px">${(c.activity||[]).length?c.activity.map(a=>`<div style="border-top:1px solid var(--line);padding:8px 0"><b style="font-size:12px">${esc(a.text)}</b><div class="muted">${prettyTimestamp(a.created_at)}</div></div>`).join(""):'<div class="muted">No activity yet.</div>'}</div></div>`;$("drawer-bg").classList.remove("hidden");$("drawer-close").onclick=()=>$("drawer-bg").classList.add("hidden");$("copy").onclick=async()=>{await navigator.clipboard.writeText(m.message);$("copy").textContent="Copied";};
+<div class="drawer-note"><b>Activity</b><div style="margin-top:10px">${(c.activity||[]).length?c.activity.map(a=>`<div style="border-top:1px solid var(--line);padding:8px 0"><b style="font-size:12px">${esc(a.text)}</b><div class="muted">${prettyTimestamp(a.created_at)}</div></div>`).join(""):'<div class="muted">No activity yet.</div>'}</div></div>
+<div class="drawer-note cleanup-note"><b>Customer cleanup</b><div class="muted" style="margin-top:5px">${c.archived?"This customer is archived and hidden from your active workflow.":"Keep sold customers for future follow-up, archive people who stopped shopping, or permanently delete duplicates/tests."}</div><div class="actions" style="margin-top:12px">${c.archived?`<button class="secondary" id="restore-customer">Restore Customer</button><button class="danger ghost" id="delete-customer">Delete Permanently</button>`:`${c.status!=="Sold"?`<button class="secondary" id="move-sold">Move to Sold</button>`:""}<button class="secondary" id="archive-customer">No Longer Shopping</button><button class="danger ghost" id="delete-customer">Delete Permanently</button>`}</div></div>`;$("drawer-bg").classList.remove("hidden");$("drawer-close").onclick=()=>$("drawer-bg").classList.add("hidden");$("copy").onclick=async()=>{await navigator.clipboard.writeText(m.message);$("copy").textContent="Copied";};
 $("edit-status").value=c.status;
 $("save-update").onclick=async()=>{
   const vehicle=$("edit-vehicle").value.trim();
@@ -487,16 +486,39 @@ $("settings-logout").onclick=async()=>{if(confirm("Sign out of DealFlow on this 
 
 $("notify-enable").onclick=async()=>{try{await toggleNotifications();}catch(e){alert(e.message);await refreshNotificationCard();}};
 $("notify-test").onclick=async()=>{try{await api("/api/push/test",{method:"POST",body:"{}"});$("notify-test").textContent="Sent ✓";setTimeout(()=>$("notify-test").textContent="Test",1800);}catch(e){alert(e.message);}};
-$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");$("modal-bg").scrollTop=0;};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};let customerSubmitBusy=false;
+$("search").oninput=renderCustomers;$("filter").onchange=renderCustomers;$("add-btn").onclick=()=>{$("modal-bg").classList.remove("hidden");$("modal-bg").scrollTop=0;};$("close-modal").onclick=$("cancel-modal").onclick=()=>{$("modal-bg").classList.add("hidden");$("form").reset();};const normalizePhone=value=>(value||"").replace(/\D/g,"").slice(-10);
+const findPossibleDuplicate=data=>{
+  const phone=normalizePhone(data.phone);
+  const name=(data.name||"").trim().toLowerCase();
+  return customers.find(c=>{
+    const samePhone=phone.length>=7&&normalizePhone(c.phone)===phone;
+    const sameName=name&&((c.name||"").trim().toLowerCase()===name);
+    return samePhone||sameName;
+  });
+};
+
+let customerSubmitBusy=false;
 $("form").onsubmit=async e=>{
   e.preventDefault();
   if(customerSubmitBusy)return;
+
+  const data=Object.fromEntries(new FormData(e.target));
+  const duplicate=findPossibleDuplicate(data);
+  if(duplicate){
+    const details=[duplicate.vehicle,duplicate.status,duplicate.archived?"Archived":""].filter(Boolean).join(" · ");
+    const addAnyway=confirm(`Possible duplicate customer found:\n\n${duplicate.name}${details?`\n${details}`:""}${duplicate.phone?`\n${duplicate.phone}`:""}\n\nPress OK to add a new customer anyway.\nPress Cancel to open the existing profile.`);
+    if(!addAnyway){
+      $("modal-bg").classList.add("hidden");
+      openCustomer(duplicate.id);
+      return;
+    }
+  }
+
   customerSubmitBusy=true;
   const submitBtn=e.target.querySelector('button[type="submit"],button:not([type])');
   const originalText=submitBtn?.textContent||"Save Customer";
   if(submitBtn){submitBtn.disabled=true;submitBtn.textContent="Saving…";}
   try{
-    const data=Object.fromEntries(new FormData(e.target));
     await api("/api/customers",{method:"POST",body:JSON.stringify(data)});
     $("modal-bg").classList.add("hidden");
     e.target.reset();
@@ -569,7 +591,7 @@ if(window.visualViewport){
 }
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/sw.js?v=4101").then(reg=>{
+  navigator.serviceWorker.register("/sw.js?v=4102").then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
 }
